@@ -739,4 +739,64 @@ def get_hospital_data(endpoint):
         if endpoint not in endpoint_map:
             return jsonify({
                 "error": f"Unknown endpoint: {endpoint}"
-            }),
+            }), 400
+        
+        result = hospital_agent._make_hospital_api_call(endpoint_map[endpoint])
+        
+        if "error" in result:
+            return jsonify({
+                "error": result["error"]
+            }), 500
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+# Add a debug endpoint to test API key
+@app.route('/debug/api-key', methods=['GET'])
+def debug_api_key():
+    """Debug endpoint to test API key configuration"""
+    try:
+        api_key = os.environ.get('OPENROUTER_API_KEY', "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")
+        
+        # Test the API key with a simple request
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/smart-hospital-system",
+            "X-Title": "Smart Hospital AI Agent"
+        }
+        
+        test_payload = {
+            "model": "tngtech/deepseek-r1t2-chimera:free",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 10
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            json=test_payload,
+            headers=headers
+        )
+        
+        return jsonify({
+            "api_key_format": f"{api_key[:10]}...{api_key[-10:] if len(api_key) > 20 else 'TOO_SHORT'}",
+            "api_key_length": len(api_key),
+            "test_response_status": response.status_code,
+            "test_response_headers": dict(response.headers),
+            "test_successful": response.status_code == 200
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "error": f"Debug test failed: {str(e)}",
+            "api_key_format": f"{api_key[:10]}...{api_key[-10:] if len(api_key) > 20 else 'TOO_SHORT'}",
+            "api_key_length": len(api_key) if 'api_key' in locals() else 0
+        }), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
