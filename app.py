@@ -8,7 +8,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 class SmartHospitalAgent:
-    def __init__(self, openrouter_api_key: str, hospital_base_url: str = "https://smarthospitalbackend.onrender.com", use_function_calling: bool = False):
+    def __init__(self, openrouter_api_key: str, hospital_base_url: str = "https://dt-agent-api.onrender.com/", use_function_calling: bool = False):
         self.openrouter_api_key = openrouter_api_key
         self.hospital_base_url = hospital_base_url
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -533,8 +533,18 @@ When users ask questions about the hospital, use the appropriate tools to gather
         }
         
         try:
+            # Debug: Print the API key (first and last 10 characters only for security)
+            api_key_debug = f"{self.openrouter_api_key[:10]}...{self.openrouter_api_key[-10:]}" if len(self.openrouter_api_key) > 20 else "KEY_TOO_SHORT"
+            print(f"DEBUG: Using API key: {api_key_debug}")
+            print(f"DEBUG: Full headers: {headers}")
+            
             # Make the API call to OpenRouter
             response = requests.post(self.openrouter_url, data=json.dumps(payload), headers=headers)
+            
+            # Debug: Print response details
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response headers: {response.headers}")
+            
             response.raise_for_status()
             response_data = response.json()
             
@@ -583,7 +593,15 @@ When users ask questions about the hospital, use the appropriate tools to gather
                 }
                 
         except requests.exceptions.RequestException as e:
-            return {"error": f"OpenRouter API call failed: {str(e)}"}
+            # More detailed error information
+            error_details = f"OpenRouter API call failed: {str(e)}"
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_json = e.response.json()
+                    error_details += f" - Response: {error_json}"
+                except:
+                    error_details += f" - Response text: {e.response.text}"
+            return {"error": error_details}
         except Exception as e:
             return {"error": f"Unexpected error: {str(e)}"}
     
@@ -644,9 +662,13 @@ agent = None
 def get_agent():
     global agent
     if agent is None:
-        api_key = "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"
+        # Try to get API key from environment variable first, then fallback to hardcoded
+        api_key = os.environ.get('OPENROUTER_API_KEY', "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")
+        
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable is required")
+        
+        print(f"DEBUG: Initializing agent with API key: {api_key[:10]}...{api_key[-10:] if len(api_key) > 20 else 'TOO_SHORT'}")
         agent = SmartHospitalAgent(api_key, use_function_calling=False)
     return agent
 
@@ -717,22 +739,4 @@ def get_hospital_data(endpoint):
         if endpoint not in endpoint_map:
             return jsonify({
                 "error": f"Unknown endpoint: {endpoint}"
-            }), 400
-        
-        result = hospital_agent._make_hospital_api_call(endpoint_map[endpoint])
-        
-        if "error" in result:
-            return jsonify({
-                "error": result["error"]
-            }), 500
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        return jsonify({
-            "error": f"Internal server error: {str(e)}"
-        }), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+            }),
